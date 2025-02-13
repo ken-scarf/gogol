@@ -5,6 +5,7 @@
 *.chi
 *.chs.h
 *.imports
+dist-newstyle
 
 # Dirs
 bin
