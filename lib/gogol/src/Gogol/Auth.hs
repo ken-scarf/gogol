@@ -131,11 +131,13 @@ newtype Store (s :: [Symbol]) = Store (MVar (Auth s))
 -- exchanged or refreshed.
 initStore ::
   (MonadIO m, MonadCatch m, KnownScopes s) =>
+  Maybe Client.Request ->
   Credentials s ->
   Logger ->
   Manager ->
   m (Store s)
-initStore c l m = exchange c l m >>= fmap Store . liftIO . newMVar
+initStore requestOverride c l m = 
+  exchange requestOverride c l m >>= fmap Store . liftIO . newMVar
 
 -- | Retrieve auth from storage
 retrieveAuthFromStore ::
@@ -149,11 +151,12 @@ retrieveAuthFromStore (Store s) =
 -- safely perform a single serial refresh.
 retrieveTokenFromStore ::
   (MonadIO m, MonadCatch m, KnownScopes s) =>
+  Maybe Client.Request ->
   Store s ->
   Logger ->
   Manager ->
   m (OAuthToken s)
-retrieveTokenFromStore (Store s) l m = do
+retrieveTokenFromStore requestOverride (Store s) l m = do
   x <- liftIO (readMVar s)
   mx <- validate x
   if mx
@@ -163,7 +166,7 @@ retrieveTokenFromStore (Store s) l m = do
       if my
         then pure (y, _token y)
         else do
-          z <- refresh y l m
+          z <- refresh requestOverride y l m
           pure (z, _token z)
 
 -- | Perform the initial credentials exchange to obtain a valid 'OAuthToken'
@@ -171,16 +174,17 @@ retrieveTokenFromStore (Store s) l m = do
 exchange ::
   forall m s.
   (MonadIO m, MonadCatch m, KnownScopes s) =>
+  Maybe Client.Request ->
   Credentials s ->
   Logger ->
   Manager ->
   m (Auth s)
-exchange c l = fmap (Auth c) . action l
+exchange requestOverride c l = fmap (Auth c) . action l
   where
     action = case c of
       FromMetadata s -> metadataToken s
       FromAccount a -> serviceAccountToken a (Proxy :: Proxy s)
-      FromClient x n -> exchangeCode x n
+      FromClient x n -> exchangeCode requestOverride x n
       FromUser u -> authorizedUserToken u Nothing
       FromTokenFile f -> \_l _m -> readTokenFile f
 
@@ -188,16 +192,17 @@ exchange c l = fmap (Auth c) . action l
 refresh ::
   forall m s.
   (MonadIO m, MonadCatch m, KnownScopes s) =>
+  Maybe Client.Request ->
   Auth s ->
   Logger ->
   Manager ->
   m (Auth s)
-refresh (Auth c t) l = fmap (Auth c) . action l
+refresh requestOverride (Auth c t) l = fmap (Auth c) . action l
   where
     action = case c of
       FromMetadata s -> metadataToken s
       FromAccount a -> serviceAccountToken a (Proxy :: Proxy s)
-      FromClient x _ -> refreshToken x t
+      FromClient x _ -> refreshToken requestOverride x t
       FromUser u -> authorizedUserToken u (_tokenRefresh t)
       FromTokenFile f -> \_l _m -> readTokenFile f
 
@@ -210,7 +215,7 @@ authorize ::
   Logger ->
   Manager ->
   m Client.Request
-authorize rq s l m = bearer <$> retrieveTokenFromStore s l m
+authorize rq s l m = bearer <$> retrieveTokenFromStore Nothing s l m
   where
     bearer t =
       rq

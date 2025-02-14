@@ -133,14 +133,15 @@ formAccessTypeURLWith c a ss =
 -- /See:/ <https://developers.google.com/accounts/docs/OAuth2InstalledApp#handlingtheresponse Exchanging the code>.
 exchangeCode ::
   (MonadIO m, MonadCatch m) =>
+  Maybe Client.Request ->
   OAuthClient ->
   (OAuthCode s) ->
   Logger ->
   Manager ->
   m (OAuthToken s)
-exchangeCode c n =
+exchangeCode requestOverride c n =
   refreshRequest $
-    tokenRequest
+    (fromMaybe (tokenRequest
       { Client.requestBody =
           textBody $
             "grant_type=authorization_code"
@@ -152,21 +153,22 @@ exchangeCode c n =
               <> toQueryParam n
               <> "&redirect_uri="
               <> redirectURI
-      }
+      }) requestOverride)
 
 -- | Perform a refresh to obtain a valid 'OAuthToken' with a new expiry time.
 --
 -- /See:/ <https://developers.google.com/accounts/docs/OAuth2InstalledApp#offline Refreshing tokens>.
 refreshToken ::
   (MonadIO m, MonadCatch m) =>
+  Maybe Client.Request ->
   OAuthClient ->
   (OAuthToken s) ->
   Logger ->
   Manager ->
   m (OAuthToken s)
-refreshToken c t =
+refreshToken requestOverride c t =
   refreshRequest $
-    tokenRequest
+    (fromMaybe (tokenRequest
       { Client.requestBody =
           textBody $
             "grant_type=refresh_token"
@@ -175,4 +177,5 @@ refreshToken c t =
               <> "&client_secret="
               <> toQueryParam (_clientSecret c)
               <> maybe mempty ("&refresh_token=" <>) (toQueryParam <$> _tokenRefresh t)
-      }
+      }) requestOverride
+    )

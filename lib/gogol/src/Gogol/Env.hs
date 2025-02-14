@@ -28,6 +28,7 @@ import Gogol.Auth
 import Gogol.Internal.Logger (Logger)
 import Gogol.Types
 import Network.HTTP.Conduit (Manager, newManager, tlsManagerSettings)
+import qualified Network.HTTP.Conduit
 
 -- | The environment containing the parameters required to make Google requests.
 data Env (scopes :: [Symbol]) = Env
@@ -137,7 +138,7 @@ newEnv ::
 newEnv = do
   m <- liftIO (newManager tlsManagerSettings)
   c <- getApplicationDefault m
-  newEnvWith c (\_ _ -> pure ()) m
+  newEnvWith Nothing c (\_ _ -> pure ()) m
 
 -- | Create a new environment.
 --
@@ -148,9 +149,10 @@ newEnvWith ::
     MonadCatch m,
     KnownScopes scopes
   ) =>
+  Maybe Network.HTTP.Conduit.Request ->
   Credentials scopes ->
   Logger ->
   Manager ->
   m (Env scopes)
-newEnvWith c l m =
-  Env mempty l m <$> initStore c l m
+newEnvWith requestOverride c l m =
+  Env mempty l m <$> initStore requestOverride c l m
